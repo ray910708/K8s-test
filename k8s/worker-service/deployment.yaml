@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-service
+  namespace: microservices-demo
+  labels:
+    app: worker-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: worker-service
+    spec:
+      # 安全上下文：Pod 級別
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: worker-service
+        image: worker-service:latest
+        imagePullPolicy: IfNotPresent
+        # 安全上下文：容器級別
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        ports:
+        - containerPort: 8081
+          name: http
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        envFrom:
+        - configMapRef:
+            name: app-config
+        - secretRef:
+            name: app-secrets
+        env:
+        - name: PORT
+          value: "8081"
+        - name: HOST
+          value: "0.0.0.0"
+        # 臨時目錄掛載（readOnlyRootFilesystem 需要）
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/.cache
+      # 臨時目錄定義
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}

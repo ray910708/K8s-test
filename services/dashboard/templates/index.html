@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microservices Health Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Microservices Health Monitor</h1>
+            <p class="subtitle">Real-time System Status Dashboard</p>
+            <div class="environment-badge">Environment: <span id="environment">{{ environment }}</span></div>
+        </header>
+
+        <div class="status-grid">
+            <!-- System Status Card -->
+            <div class="card">
+                <h2>System Status</h2>
+                <div id="system-status" class="status-indicator loading">
+                    <div class="spinner"></div>
+                    <span>Loading...</span>
+                </div>
+                <p id="last-updated" class="timestamp">Last updated: Never</p>
+            </div>
+
+            <!-- Service Health Cards -->
+            <div class="card">
+                <h2>API Gateway</h2>
+                <div id="api-gateway-status" class="service-status loading">
+                    <div class="spinner"></div>
+                </div>
+                <div id="api-gateway-details" class="service-details"></div>
+            </div>
+
+            <div class="card">
+                <h2>Worker Service</h2>
+                <div id="worker-status" class="service-status loading">
+                    <div class="spinner"></div>
+                </div>
+                <div id="worker-details" class="service-details"></div>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <div class="card">
+                <h2>System Information</h2>
+                <div id="system-info-content">
+                    <div class="spinner"></div>
+                    <span>Loading system information...</span>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Kubernetes Microservices Demo | Auto-refresh every 5 seconds</p>
+        </footer>
+    </div>
+
+    <script>
+        // Auto-refresh every 5 seconds
+        let refreshInterval;
+
+        function updateStatus() {
+            fetch('/api/health-check')
+                .then(response => response.json())
+                .then(data => {
+                    // Update system status
+                    const systemStatus = document.getElementById('system-status');
+                    systemStatus.className = 'status-indicator ' + data.system_status;
+                    systemStatus.innerHTML = `<span>${data.system_status.toUpperCase()}</span>`;
+
+                    // Update last updated time
+                    const now = new Date();
+                    document.getElementById('last-updated').textContent =
+                        `Last updated: ${now.toLocaleTimeString()}`;
+
+                    // Update individual services
+                    data.services.forEach(service => {
+                        const statusId = service.name.toLowerCase().replace(' ', '-') + '-status';
+                        const detailsId = service.name.toLowerCase().replace(' ', '-') + '-details';
+
+                        const statusElement = document.getElementById(statusId);
+                        const detailsElement = document.getElementById(detailsId);
+
+                        if (statusElement) {
+                            statusElement.className = 'service-status ' + service.status;
+                            statusElement.innerHTML = `<span>${service.status.toUpperCase()}</span>`;
+                        }
+
+                        if (detailsElement && service.response_time_ms) {
+                            detailsElement.innerHTML = `
+                                <div class="detail-item">
+                                    <strong>Response Time:</strong> ${service.response_time_ms}ms
+                                </div>
+                            `;
+                        } else if (detailsElement && service.error) {
+                            detailsElement.innerHTML = `
+                                <div class="detail-item error">
+                                    <strong>Error:</strong> ${service.error}
+                                </div>
+                            `;
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching health check:', error);
+                    const systemStatus = document.getElementById('system-status');
+                    systemStatus.className = 'status-indicator error';
+                    systemStatus.innerHTML = '<span>ERROR</span>';
+                });
+
+            // Update system info
+            fetch('/api/system-info')
+                .then(response => response.json())
+                .then(data => {
+                    const infoContent = document.getElementById('system-info-content');
+                    let html = '<div class="info-grid">';
+
+                    if (data.api_gateway) {
+                        html += `
+                            <div class="info-item">
+                                <h3>API Gateway</h3>
+                                <p><strong>Status:</strong> ${data.api_gateway.status || 'Unknown'}</p>
+                                <p><strong>Environment:</strong> ${data.api_gateway.environment || 'Unknown'}</p>
+                                <p><strong>Redis Connected:</strong> ${data.api_gateway.redis_connected ? 'Yes' : 'No'}</p>
+                                ${data.api_gateway.total_requests ? `<p><strong>Total Requests:</strong> ${data.api_gateway.total_requests}</p>` : ''}
+                            </div>
+                        `;
+                    }
+
+                    if (data.worker_service) {
+                        html += `
+                            <div class="info-item">
+                                <h3>Worker Service</h3>
+                                <p><strong>Status:</strong> ${data.worker_service.status || 'Unknown'}</p>
+                                <p><strong>Environment:</strong> ${data.worker_service.environment || 'Unknown'}</p>
+                                <p><strong>Redis Connected:</strong> ${data.worker_service.redis_connected ? 'Yes' : 'No'}</p>
+                                ${data.worker_service.last_task_seconds_ago ? `<p><strong>Last Task:</strong> ${data.worker_service.last_task_seconds_ago}s ago</p>` : ''}
+                            </div>
+                        `;
+                    }
+
+                    html += '</div>';
+                    infoContent.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error fetching system info:', error);
+                    document.getElementById('system-info-content').innerHTML =
+                        '<p class="error">Failed to load system information</p>';
+                });
+        }
+
+        // Initial update
+        updateStatus();
+
+        // Set up auto-refresh
+        refreshInterval = setInterval(updateStatus, 5000);
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            clearInterval(refreshInterval);
+        });
+    </script>
+</body>
+</html>

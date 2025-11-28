@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: microservices-demo
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      # 安全上下文：Pod 級別
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999  # Redis 官方鏡像的默認用戶
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        # 安全上下文：容器級別
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999  # Redis 官方鏡像的默認用戶
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+        livenessProbe:
+          tcpSocket:
+            port: 6379
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        # 臨時目錄掛載（readOnlyRootFilesystem 需要）
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: redis-data
+        emptyDir: {}
+      # 臨時目錄定義
+      - name: tmp
+        emptyDir: {}

@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker-service-pdb
+  namespace: microservices-demo
+spec:
+  # Worker Service 只有 1 個副本，使用 maxUnavailable: 0 確保不會被驅逐
+  # 注意：這意味著在節點維護時可能需要手動干預
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: worker-service

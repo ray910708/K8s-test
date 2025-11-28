@@ -1,0 +1,141 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
+    branches: [main]
+
+env:
+  DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+  KUBE_NAMESPACE: microservices-demo
+
+jobs:
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    # Only run on successful CI completion
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Configure kubectl
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+
+    - name: Verify cluster connection
+      run: |
+        kubectl cluster-info
+        kubectl get nodes
+
+    - name: Update image tags in manifests
+      run: |
+        # Get the commit SHA from the triggering workflow
+        COMMIT_SHA=${{ github.event.workflow_run.head_sha }}
+        SHORT_SHA=${COMMIT_SHA:0:7}
+
+        # Update deployment manifests with new image tags
+        sed -i "s|image: api-gateway:latest|image: ${{ secrets.DOCKER_HUB_USERNAME }}/api-gateway:main-${COMMIT_SHA}|g" k8s/api-gateway/deployment.yaml
+        sed -i "s|image: worker-service:latest|image: ${{ secrets.DOCKER_HUB_USERNAME }}/worker-service:main-${COMMIT_SHA}|g" k8s/worker-service/deployment.yaml
+        sed -i "s|image: dashboard:latest|image: ${{ secrets.DOCKER_HUB_USERNAME }}/dashboard:main-${COMMIT_SHA}|g" k8s/dashboard/deployment.yaml
+
+        # Also update imagePullPolicy to Always for production
+        sed -i "s|imagePullPolicy: IfNotPresent|imagePullPolicy: Always|g" k8s/*/deployment.yaml
+
+    - name: Deploy to Kubernetes
+      run: |
+        # Apply base resources
+        kubectl apply -f k8s/namespace.yaml
+        kubectl apply -f k8s/configmap.yaml
+        kubectl apply -f k8s/secrets.yaml
+
+        # Deploy Redis
+        kubectl apply -f k8s/redis/
+
+        # Deploy services
+        kubectl apply -f k8s/api-gateway/deployment.yaml
+        kubectl apply -f k8s/api-gateway/service.yaml
+        kubectl apply -f k8s/worker-service/deployment.yaml
+        kubectl apply -f k8s/worker-service/service.yaml
+        kubectl apply -f k8s/dashboard/deployment.yaml
+        kubectl apply -f k8s/dashboard/service.yaml
+
+        # Deploy HPA and Ingress
+        kubectl apply -f k8s/api-gateway/hpa.yaml || true
+        kubectl apply -f k8s/worker-service/hpa.yaml || true
+        kubectl apply -f k8s/ingress.yaml || true
+
+    - name: Wait for rollout to complete
+      run: |
+        echo "Waiting for API Gateway rollout..."
+        kubectl rollout status deployment/api-gateway -n ${{ env.KUBE_NAMESPACE }} --timeout=5m
+
+        echo "Waiting for Worker Service rollout..."
+        kubectl rollout status deployment/worker-service -n ${{ env.KUBE_NAMESPACE }} --timeout=5m
+
+        echo "Waiting for Dashboard rollout..."
+        kubectl rollout status deployment/dashboard -n ${{ env.KUBE_NAMESPACE }} --timeout=5m
+
+    - name: Verify deployment
+      run: |
+        echo "=== Pods Status ==="
+        kubectl get pods -n ${{ env.KUBE_NAMESPACE }}
+
+        echo "=== Services Status ==="
+        kubectl get svc -n ${{ env.KUBE_NAMESPACE }}
+
+        echo "=== Ingress Status ==="
+        kubectl get ingress -n ${{ env.KUBE_NAMESPACE }} || true
+
+        echo "=== HPA Status ==="
+        kubectl get hpa -n ${{ env.KUBE_NAMESPACE }} || true
+
+    - name: Run smoke tests
+      run: |
+        # Get the API Gateway service endpoint
+        # For cloud environments, you might need to wait for LoadBalancer IP
+        API_POD=$(kubectl get pods -n ${{ env.KUBE_NAMESPACE }} -l app=api-gateway -o jsonpath='{.items[0].metadata.name}')
+
+        # Port forward for testing
+        kubectl port-forward -n ${{ env.KUBE_NAMESPACE }} pod/$API_POD 8080:8080 &
+        PF_PID=$!
+        sleep 5
+
+        # Test health endpoints
+        echo "Testing API Gateway health..."
+        curl -f http://localhost:8080/health/live || exit 1
+        curl -f http://localhost:8080/health/ready || exit 1
+        curl -f http://localhost:8080/api/status || exit 1
+
+        # Kill port forward
+        kill $PF_PID
+
+        echo "Smoke tests passed!"
+
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ Deployment successful!"
+        else
+          echo "❌ Deployment failed!"
+          exit 1
+        fi
+
+    - name: Rollback on failure
+      if: failure()
+      run: |
+        echo "Rolling back deployments..."
+        kubectl rollout undo deployment/api-gateway -n ${{ env.KUBE_NAMESPACE }} || true
+        kubectl rollout undo deployment/worker-service -n ${{ env.KUBE_NAMESPACE }} || true
+        kubectl rollout undo deployment/dashboard -n ${{ env.KUBE_NAMESPACE }} || true

@@ -1,0 +1,11 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: microservices-demo
+spec:
+  # 確保至少 1 個 Pod 運行，防止滾動更新或節點維護時服務中斷
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api-gateway

@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: microservices-demo
+data:
+  # Application environment
+  APP_ENV: "production"
+  LOG_LEVEL: "INFO"
+  DEBUG: "False"
+
+  # Redis configuration
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+
+  # Service URLs (for service discovery)
+  API_GATEWAY_URL: "http://api-gateway-service:8080"
+  WORKER_SERVICE_URL: "http://worker-service:8081"
+
+  # Service ports
+  API_GATEWAY_PORT: "8080"
+  WORKER_SERVICE_PORT: "8081"
+  DASHBOARD_PORT: "3000"

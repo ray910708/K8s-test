@@ -1,0 +1,11 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dashboard-pdb
+  namespace: microservices-demo
+spec:
+  # 確保至少 1 個 Dashboard Pod 運行
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: dashboard
