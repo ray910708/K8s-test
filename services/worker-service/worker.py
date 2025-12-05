@@ -140,8 +140,6 @@ def process_task():
 
 def run_scheduler():
     """Run the task scheduler in a separate thread."""
-    global worker_running
-
     # Schedule tasks
     schedule.every(10).seconds.do(process_task)
 
