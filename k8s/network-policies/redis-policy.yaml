@@ -1,0 +1,66 @@
+# Redis 的 NetworkPolicy
+# 功能：
+# 1. 只允許應用服務（api-gateway, worker-service, dashboard）訪問 Redis
+# 2. 拒絕其他所有入站流量
+# 3. 允許 Redis 進行必要的出站通信（DNS等）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-policy
+  namespace: microservices-demo
+spec:
+  # 應用於 Redis Pod
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  - Egress
+
+  # 入站規則：只允許應用服務訪問
+  ingress:
+  # 允許來自 API Gateway 的訪問
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # 允許來自 Worker Service 的訪問
+  - from:
+    - podSelector:
+        matchLabels:
+          app: worker-service
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # 允許來自 Dashboard 的訪問（如果需要）
+  - from:
+    - podSelector:
+        matchLabels:
+          app: dashboard
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # 出站規則
+  egress:
+  # 允許 DNS 查詢
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # 面試展示點：
+  # 1. 解釋最小權限原則：Redis 不需要訪問互聯網
+  # 2. 說明如何使用 podSelector 實現服務間的精細訪問控制
+  # 3. 討論生產環境的考慮：
+  #    - Redis Sentinel/Cluster 需要的額外規則
+  #    - 備份服務的訪問權限
+  #    - 監控系統（如 Prometheus）的訪問

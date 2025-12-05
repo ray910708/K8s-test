@@ -1,0 +1,50 @@
+# PR Labeler Configuration
+# Automatically labels PRs based on changed files
+
+# Service labels
+'service:api-gateway':
+  - services/api-gateway/**/*
+
+'service:worker-service':
+  - services/worker-service/**/*
+
+'service:dashboard':
+  - services/dashboard/**/*
+
+# Component labels
+'component:tests':
+  - any: ['**/tests/**/*', '**/test_*.py', '**/*_test.py']
+
+'component:docs':
+  - any: ['docs/**/*', '*.md', '**/README.md']
+
+'component:ci':
+  - any: ['.github/**/*', '.gitlab-ci.yml', 'Jenkinsfile']
+
+'component:k8s':
+  - k8s/**/*
+
+'component:docker':
+  - any: ['**/Dockerfile', '**/docker-compose*.yml']
+
+# Type labels
+'type:bug':
+  - any: ['**/fix/**/*', '**/bugfix/**/*']
+
+'type:feature':
+  - any: ['**/feature/**/*', '**/feat/**/*']
+
+'type:refactor':
+  - any: ['**/refactor/**/*']
+
+# Infrastructure
+'infrastructure':
+  - any: ['k8s/**/*', 'terraform/**/*', 'scripts/**/*']
+
+# Security
+'security':
+  - any: ['**/security/**/*', '**/*security*.py']
+
+# Dependencies
+'dependencies':
+  - any: ['**/requirements*.txt', '**/package*.json', '**/Pipfile*']

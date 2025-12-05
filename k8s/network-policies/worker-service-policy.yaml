@@ -1,0 +1,55 @@
+# Worker Service 的 NetworkPolicy
+# 功能：
+# 1. 允許來自 API Gateway 和同 namespace Pod 的訪問
+# 2. 允許訪問 Redis
+# 3. 允許 DNS 查詢
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-service-policy
+  namespace: microservices-demo
+spec:
+  podSelector:
+    matchLabels:
+      app: worker-service
+  policyTypes:
+  - Ingress
+  - Egress
+
+  # 入站規則
+  ingress:
+  # 允許來自 API Gateway 的訪問
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    ports:
+    - protocol: TCP
+      port: 8081
+
+  # 允許同 namespace 內的健康檢查
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8081
+
+  # 出站規則
+  egress:
+  # 允許訪問 Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # 允許 DNS 查詢
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53

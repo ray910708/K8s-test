@@ -1,0 +1,53 @@
+# PriorityClass definitions for workload prioritization
+# Higher value = higher priority
+# System classes: 1000000000+
+# Critical: 1000000+
+# High: 10000+
+# Medium: 1000+
+# Low: 100+
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: critical
+value: 1000000
+globalDefault: false
+description: "Critical workloads that must not be preempted (API Gateway, Redis)"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high-priority
+value: 10000
+globalDefault: false
+description: "High priority workloads (Dashboard, monitoring)"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: medium-priority
+value: 1000
+globalDefault: true  # Default for workloads without explicit priority
+description: "Normal priority workloads (Worker Service)"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: low-priority
+value: 100
+globalDefault: false
+description: "Low priority workloads (batch jobs, dev/test workloads)"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: best-effort
+value: 1
+globalDefault: false
+preemptionPolicy: Never  # Cannot preempt other pods
+description: "Best-effort workloads that can be killed anytime"

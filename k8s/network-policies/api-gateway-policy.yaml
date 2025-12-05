@@ -1,0 +1,70 @@
+# API Gateway 的 NetworkPolicy
+# 功能：
+# 1. 允許來自 Ingress Controller 的入站流量
+# 2. 允許訪問 Redis 服務
+# 3. 允許 DNS 查詢（Kubernetes 內部）
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-gateway-policy
+  namespace: microservices-demo
+spec:
+  # 應用於 api-gateway Pod
+  podSelector:
+    matchLabels:
+      app: api-gateway
+  policyTypes:
+  - Ingress
+  - Egress
+
+  # 入站規則
+  ingress:
+  # 允許來自 Ingress Controller 的流量
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx  # Ingress Controller 的 namespace
+    ports:
+    - protocol: TCP
+      port: 8080
+
+  # 允許同 namespace 內的 Pod 互相訪問（用於健康檢查等）
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8080
+
+  # 出站規則
+  egress:
+  # 允許訪問 Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # 允許訪問 Worker Service（如果需要）
+  - to:
+    - podSelector:
+        matchLabels:
+          app: worker-service
+    ports:
+    - protocol: TCP
+      port: 8081
+
+  # 允許 DNS 查詢（Kubernetes CoreDNS）
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # 面試展示點：
+  # 1. 解釋為什麼需要明確允許 DNS 查詢
+  # 2. 說明 namespaceSelector 和 podSelector 的區別
+  # 3. 討論生產環境中可能需要添加的其他規則（如監控、日誌收集）

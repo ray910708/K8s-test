@@ -5,9 +5,10 @@ import os
 import random
 import threading
 from flask import Flask, jsonify
-import redis
 import schedule
 from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from redis_client import RedisClient
+from structured_logger import setup_logger
 
 # Configuration
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
@@ -23,28 +24,25 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 # Initialize Flask app for health checks
 app = Flask(__name__)
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Configure structured logging
+logger = setup_logger(
+    service_name='worker-service',
+    log_level=LOG_LEVEL,
+    use_json=True
 )
-logger = logging.getLogger(__name__)
 
-# Initialize Redis connection
-try:
-    redis_client = redis.Redis(
-        host=REDIS_HOST,
-        port=REDIS_PORT,
-        password=REDIS_PASSWORD if REDIS_PASSWORD else None,
-        db=REDIS_DB,
-        decode_responses=True,
-        socket_connect_timeout=5
-    )
-    redis_client.ping()
-    logger.info(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
-except redis.ConnectionError as e:
-    logger.warning(f"Failed to connect to Redis: {e}. Service will continue without Redis.")
-    redis_client = None
+# Initialize Redis connection with connection pool
+redis_client = RedisClient(
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    password=REDIS_PASSWORD if REDIS_PASSWORD else None,
+    db=REDIS_DB,
+    max_connections=30,
+    socket_timeout=5,
+    socket_connect_timeout=5,
+    retry_on_timeout=True,
+    health_check_interval=30
+)
 
 # Prometheus metrics
 TASKS_PROCESSED = Counter(
@@ -68,25 +66,40 @@ LAST_TASK_TIMESTAMP = Gauge(
     'Timestamp of the last processed task'
 )
 
+REDIS_POOL_AVAILABLE = Gauge(
+    'worker_redis_pool_connections_available',
+    'Number of available connections in the Redis pool'
+)
 
-# Global state
+REDIS_POOL_IN_USE = Gauge(
+    'worker_redis_pool_connections_in_use',
+    'Number of connections currently in use in the Redis pool'
+)
+
+REDIS_POOL_MAX = Gauge(
+    'worker_redis_pool_connections_max',
+    'Maximum number of connections in the Redis pool'
+)
+
+
+# Global state (protected by lock for thread safety)
 worker_running = True
 last_task_time = time.time()
+state_lock = threading.Lock()
 
 
 def update_redis_status():
-    """Update Redis connection status metric."""
-    if redis_client:
-        try:
-            redis_client.ping()
-            REDIS_CONNECTION_STATUS.set(1)
-            return True
-        except redis.ConnectionError:
-            REDIS_CONNECTION_STATUS.set(0)
-            return False
-    else:
-        REDIS_CONNECTION_STATUS.set(0)
-        return False
+    """Update Redis connection status metric and pool statistics."""
+    is_connected = redis_client.is_connected()
+    REDIS_CONNECTION_STATUS.set(1 if is_connected else 0)
+
+    # Update connection pool statistics
+    pool_stats = redis_client.get_pool_stats()
+    REDIS_POOL_AVAILABLE.set(pool_stats.get('available', 0))
+    REDIS_POOL_IN_USE.set(pool_stats.get('in_use', 0))
+    REDIS_POOL_MAX.set(pool_stats.get('max_connections', 0))
+
+    return is_connected
 
 
 def process_task():
@@ -105,16 +118,14 @@ def process_task():
 
         # Update Redis if connected
         if update_redis_status():
-            try:
-                redis_client.incr(f'worker:tasks:{task_type}')
-                redis_client.set('worker:last_task', task_type)
-                redis_client.set('worker:last_task_time', time.time())
-            except Exception as e:
-                logger.error(f"Error updating Redis: {e}")
+            redis_client.incr(f'worker:tasks:{task_type}')
+            redis_client.set('worker:last_task', task_type)
+            redis_client.set('worker:last_task_time', str(time.time()))
 
         # Record metrics
         TASKS_PROCESSED.labels(task_type=task_type, status='success').inc()
-        last_task_time = time.time()
+        with state_lock:
+            last_task_time = time.time()
         LAST_TASK_TIMESTAMP.set(last_task_time)
 
         logger.info(f"Task {task_type} completed in {processing_time:.2f}s")
@@ -136,7 +147,10 @@ def run_scheduler():
 
     logger.info("Scheduler started - processing tasks every 10 seconds")
 
-    while worker_running:
+    while True:
+        with state_lock:
+            if not worker_running:
+                break
         schedule.run_pending()
         time.sleep(1)
 
@@ -157,7 +171,8 @@ def liveness():
 def readiness():
     """Readiness probe endpoint."""
     # Check if scheduler is running and tasks are being processed
-    time_since_last_task = time.time() - last_task_time
+    with state_lock:
+        time_since_last_task = time.time() - last_task_time
     redis_ready = update_redis_status()
 
     # Consider ready if last task was within 30 seconds
@@ -190,7 +205,8 @@ def metrics():
 def status():
     """Get worker status."""
     redis_ready = update_redis_status()
-    time_since_last_task = time.time() - last_task_time
+    with state_lock:
+        time_since_last_task = time.time() - last_task_time
 
     task_stats = {}
     if redis_ready:
@@ -201,6 +217,9 @@ def status():
         except Exception as e:
             logger.error(f"Error getting task stats from Redis: {e}")
 
+    # Get connection pool statistics
+    pool_stats = redis_client.get_pool_stats()
+
     return jsonify({
         'service': 'worker-service',
         'status': 'running',
@@ -208,6 +227,11 @@ def status():
         'redis_connected': redis_ready,
         'last_task_seconds_ago': round(time_since_last_task, 2),
         'task_stats': task_stats,
+        'redis_pool': {
+            'available': pool_stats.get('available', 0),
+            'in_use': pool_stats.get('in_use', 0),
+            'max_connections': pool_stats.get('max_connections', 0)
+        },
         'timestamp': time.time()
     }), 200
 
@@ -230,4 +254,5 @@ if __name__ == '__main__':
         )
     except KeyboardInterrupt:
         logger.info("Shutting down worker service...")
-        worker_running = False
+        with state_lock:
+            worker_running = False

@@ -20,6 +20,8 @@ spec:
       labels:
         app: worker-service
     spec:
+      # 優先級類別：中等優先級（背景任務）
+      priorityClassName: medium-priority
       # 安全上下文：Pod 級別
       securityContext:
         runAsNonRoot: true

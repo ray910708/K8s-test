@@ -4,6 +4,8 @@ import time
 import os
 from flask import Flask, render_template, jsonify
 import requests
+from structured_logger import setup_logger, LoggerAdapter
+from request_context import RequestContextMiddleware, get_trace_id
 
 # Configuration
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
@@ -19,12 +21,18 @@ WORKER_SERVICE_URL = os.getenv('WORKER_SERVICE_URL', 'http://worker-service:8081
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Configure structured logging
+base_logger = setup_logger(
+    service_name='dashboard',
+    log_level=LOG_LEVEL,
+    use_json=True
 )
-logger = logging.getLogger(__name__)
+
+# Create logger adapter for contextual logging
+logger = LoggerAdapter(base_logger, {})
+
+# Initialize request context middleware for trace ID management
+RequestContextMiddleware(app)
 
 
 def check_service_health(service_name, url):
@@ -150,8 +158,8 @@ def readiness():
                 'api_gateway_reachable': True,
                 'timestamp': time.time()
             }), 200
-    except requests.RequestException:
-        pass
+    except requests.RequestException as e:
+        logger.warning(f"Unable to reach API Gateway during readiness check: {e}")
 
     return jsonify({
         'status': 'not_ready',

@@ -1,0 +1,16 @@
+# 默認拒絕所有流量的 NetworkPolicy
+# 這是網絡安全的基礎：零信任原則，先拒絕所有，再明確允許需要的流量
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: microservices-demo
+spec:
+  # 應用於 namespace 中的所有 Pod
+  podSelector: {}
+  # 定義策略類型：限制 Ingress（入站）和 Egress（出站）
+  policyTypes:
+  - Ingress
+  - Egress
+  # 注意：沒有定義 ingress 或 egress 規則，表示拒絕所有流量
+  # 後續的 NetworkPolicy 會明確允許需要的流量

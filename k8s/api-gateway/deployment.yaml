@@ -20,6 +20,8 @@ spec:
       labels:
         app: api-gateway
     spec:
+      # 優先級類別：關鍵服務，不應被搶占
+      priorityClassName: critical
       # 安全上下文：Pod 級別
       securityContext:
         runAsNonRoot: true
@@ -27,6 +29,21 @@ spec:
         fsGroup: 2000
         seccompProfile:
           type: RuntimeDefault
+      # Pod Anti-Affinity：確保副本分散在不同節點上
+      # 使用 preferredDuringSchedulingIgnoredDuringExecution 而非 required
+      # 因為在小型集群中可能沒有足夠的節點
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - api-gateway
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: api-gateway
         image: api-gateway:latest

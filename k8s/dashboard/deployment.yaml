@@ -20,6 +20,8 @@ spec:
       labels:
         app: dashboard
     spec:
+      # 優先級類別：高優先級服務（用戶界面）
+      priorityClassName: high-priority
       # 安全上下文：Pod 級別
       securityContext:
         runAsNonRoot: true
@@ -27,6 +29,19 @@ spec:
         fsGroup: 2000
         seccompProfile:
           type: RuntimeDefault
+      # Pod Anti-Affinity：確保副本分散在不同節點上
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - dashboard
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: dashboard
         image: dashboard:latest

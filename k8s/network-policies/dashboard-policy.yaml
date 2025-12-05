@@ -1,0 +1,64 @@
+# Dashboard 的 NetworkPolicy
+# 功能：
+# 1. 允許來自 Ingress Controller 的訪問（提供 Web UI）
+# 2. 允許訪問 API Gateway 和 Worker Service（獲取健康狀態）
+# 3. 允許 DNS 查詢
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dashboard-policy
+  namespace: microservices-demo
+spec:
+  podSelector:
+    matchLabels:
+      app: dashboard
+  policyTypes:
+  - Ingress
+  - Egress
+
+  # 入站規則
+  ingress:
+  # 允許來自 Ingress Controller 的流量
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+
+  # 允許同 namespace 內的健康檢查
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 3000
+
+  # 出站規則
+  egress:
+  # 允許訪問 API Gateway（獲取健康狀態）
+  - to:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    ports:
+    - protocol: TCP
+      port: 8080
+
+  # 允許訪問 Worker Service（獲取健康狀態）
+  - to:
+    - podSelector:
+        matchLabels:
+          app: worker-service
+    ports:
+    - protocol: TCP
+      port: 8081
+
+  # 允許 DNS 查詢
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53

@@ -1,0 +1,160 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: microservices-demo
+  labels:
+    app: prometheus
+data:
+  alert-rules.yml: |
+    groups:
+      - name: microservices_alerts
+        interval: 30s
+        rules:
+          # High error rate
+          - alert: HighErrorRate
+            expr: |
+              (
+                sum(rate(api_gateway_requests_total{status=~"5.."}[5m])) by (service)
+                /
+                sum(rate(api_gateway_requests_total[5m])) by (service)
+              ) > 0.05
+            for: 5m
+            labels:
+              severity: critical
+              team: platform
+            annotations:
+              summary: "High error rate detected on {{ $labels.service }}"
+              description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+          # High latency
+          - alert: HighLatency
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(api_gateway_request_duration_seconds_bucket[5m])) by (le, service)
+              ) > 1.0
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "High latency on {{ $labels.service }}"
+              description: "P95 latency is {{ $value }}s (threshold: 1s)"
+
+          # Service down
+          - alert: ServiceDown
+            expr: up{job=~"api-gateway|worker-service|dashboard"} == 0
+            for: 2m
+            labels:
+              severity: critical
+              team: platform
+            annotations:
+              summary: "Service {{ $labels.job }} is down"
+              description: "{{ $labels.job }} has been down for more than 2 minutes"
+
+          # High memory usage
+          - alert: HighMemoryUsage
+            expr: |
+              (
+                container_memory_working_set_bytes{namespace="microservices-demo"}
+                /
+                container_spec_memory_limit_bytes{namespace="microservices-demo"}
+              ) > 0.9
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "High memory usage in {{ $labels.pod }}"
+              description: "Memory usage is {{ $value | humanizePercentage }}"
+
+          # High CPU usage
+          - alert: HighCPUUsage
+            expr: |
+              (
+                rate(container_cpu_usage_seconds_total{namespace="microservices-demo"}[5m])
+                /
+                container_spec_cpu_quota{namespace="microservices-demo"} * 100000
+              ) > 0.9
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "High CPU usage in {{ $labels.pod }}"
+              description: "CPU usage is {{ $value | humanizePercentage }}"
+
+          # Redis connection pool exhausted
+          - alert: RedisConnectionPoolExhausted
+            expr: |
+              (
+                api_gateway_redis_pool_connections_in_use
+                /
+                api_gateway_redis_pool_connections_max
+              ) > 0.9
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "Redis connection pool near exhaustion"
+              description: "Connection pool usage is {{ $value | humanizePercentage }}"
+
+          # Redis connection down
+          - alert: RedisConnectionDown
+            expr: api_gateway_redis_connection_status == 0
+            for: 1m
+            labels:
+              severity: critical
+              team: platform
+            annotations:
+              summary: "Redis connection is down"
+              description: "Service cannot connect to Redis"
+
+          # Too many requests in progress
+          - alert: TooManyRequestsInProgress
+            expr: api_gateway_requests_in_progress > 100
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "Too many concurrent requests"
+              description: "{{ $value }} requests are currently in progress"
+
+          # Worker task processing lag
+          - alert: WorkerTaskProcessingLag
+            expr: (time() - worker_last_task_timestamp) > 60
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "Worker hasn't processed tasks recently"
+              description: "Last task was {{ $value }}s ago"
+
+          # Container restarts
+          - alert: ContainerRestarts
+            expr: |
+              rate(kube_pod_container_status_restarts_total{namespace="microservices-demo"}[15m]) > 0
+            for: 5m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "Container {{ $labels.container }} is restarting"
+              description: "Container has restarted {{ $value }} times in the last 15 minutes"
+
+          # Pod not ready
+          - alert: PodNotReady
+            expr: |
+              sum by (namespace, pod) (
+                kube_pod_status_phase{namespace="microservices-demo", phase=~"Pending|Unknown|Failed"}
+              ) > 0
+            for: 5m
+            labels:
+              severity: critical
+              team: platform
+            annotations:
+              summary: "Pod {{ $labels.pod }} is not ready"
+              description: "Pod is in {{ $labels.phase }} phase"

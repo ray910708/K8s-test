@@ -11,6 +11,7 @@ spec:
   minReplicas: 1
   maxReplicas: 5
   metrics:
+  # Resource-based metrics
   - type: Resource
     resource:
       name: cpu
@@ -23,15 +24,37 @@ spec:
       target:
         type: Utilization
         averageUtilization: 80
+
+  # Custom metrics (requires Prometheus Adapter)
+  # Uncomment when Prometheus Adapter is installed
+  # - type: Pods
+  #   pods:
+  #     metric:
+  #       name: worker_tasks_in_progress
+  #     target:
+  #       type: AverageValue
+  #       averageValue: "10"
+  # - type: Pods
+  #   pods:
+  #     metric:
+  #       name: worker_tasks_rate
+  #     target:
+  #       type: AverageValue
+  #       averageValue: "50"
+
   behavior:
     scaleDown:
-      stabilizationWindowSeconds: 300
+      stabilizationWindowSeconds: 600  # Wait 10 min before scaling down (workers need more time)
       policies:
       - type: Percent
-        value: 50
+        value: 25  # Scale down more conservatively for workers
         periodSeconds: 15
+      - type: Pods
+        value: 1
+        periodSeconds: 15
+      selectPolicy: Min  # Choose the most conservative policy
     scaleUp:
-      stabilizationWindowSeconds: 0
+      stabilizationWindowSeconds: 30  # Short delay to avoid thrashing
       policies:
       - type: Percent
         value: 100
@@ -39,4 +62,4 @@ spec:
       - type: Pods
         value: 1
         periodSeconds: 15
-      selectPolicy: Max
+      selectPolicy: Max  # Choose the most aggressive policy
