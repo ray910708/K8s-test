@@ -8,7 +8,57 @@
 
 ## 問題與修復
 
-### 1. Rate Limiter after_request 註冊問題 - API Gateway
+### 1. Prometheus Metrics 和 Readiness Probe 測試失敗
+
+**問題**:
+```
+# Metrics 測試
+AssertionError: assert b'api_gateway_requests_total' in b''
+
+# Readiness 測試
+assert 200 == 503  # Expected 503 when Redis disconnected, got 200
+```
+
+**原因**:
+
+**Metrics 問題**: `reset_metrics` fixture 清除了 Prometheus REGISTRY 中的所有 collectors，包括默認的 process/platform/gc collectors。當 `/metrics` 調用 `generate_latest()` 時，沒有任何 metrics 可以生成，導致返回空響應。
+
+**Readiness 問題**: 測試嘗試通過運行時設置環境變量 `REDIS_PASSWORD` 來模擬生產環境，但 Config 類在應用啟動時已經加載配置。readiness 邏輯 `all_healthy = redis_ready or not Config.REDIS_PASSWORD` 中，由於測試環境中 Config.REDIS_PASSWORD 為 None，即使 Redis 斷開也返回 200。
+
+**修復**:
+
+1. **Metrics 修復** - 更新 conftest.py 中的 `reset_metrics` fixture，只清除自定義 metrics，保留默認 collectors
+
+2. **Readiness 修復** - 使用 `patch('app.Config')` 直接 mock Config 對象
+
+```python
+# Metrics 修復
+# 修復前
+for collector in collectors:
+    REGISTRY.unregister(collector)  # ❌ 清除所有 collectors
+
+# 修復後
+if collector_name in ['ProcessCollector', 'PlatformCollector', 'GCCollector']:
+    collectors_to_keep.append(collector)  # ✅ 保留默認 collectors
+else:
+    collectors_to_remove.append(collector)
+
+# Readiness 修復
+# 修復前
+os.environ['REDIS_PASSWORD'] = 'test-password'  # ❌ 運行時設置無效
+
+# 修復後
+with patch('app.Config') as mock_config:  # ✅ 直接 mock Config
+    mock_config.REDIS_PASSWORD = 'test-password'
+```
+
+**文件**:
+- [services/api-gateway/tests/conftest.py](services/api-gateway/tests/conftest.py)
+- [services/api-gateway/tests/test_health.py](services/api-gateway/tests/test_health.py)
+
+---
+
+### 2. Rate Limiter after_request 註冊問題 - API Gateway
 
 **問題**:
 ```
@@ -71,7 +121,7 @@ client._health_check_interval = 30
 
 ---
 
-### 2. Flake8 F824 錯誤 - Worker Service
+### 3. Flake8 F824 錯誤 - Worker Service
 
 **問題**: 
 ```
@@ -100,7 +150,7 @@ def run_scheduler():
 
 ---
 
-### 3. Flake8 命令未找到
+### 4. Flake8 命令未找到
 
 **問題**:
 ```
@@ -125,7 +175,7 @@ flake8>=6.1.0  # ✅ 新增
 
 ---
 
-### 4. actions/upload-artifact 版本棄用
+### 5. actions/upload-artifact 版本棄用
 
 **問題**:
 ```
@@ -154,7 +204,7 @@ GitHub Actions 在 2024-04-16 宣布棄用 v3 版本的 artifact actions。
 
 ---
 
-### 5. Worker Service 測試覆蓋率不足
+### 6. Worker Service 測試覆蓋率不足
 
 **問題**:
 ```
@@ -280,23 +330,27 @@ pytest tests/
    - `services/api-gateway/rate_limiter.py`
    - `services/api-gateway/tests/test_redis_client.py`
 
-2. **依賴更新** (2 個文件)
+2. **測試修復** (2 個文件)
+   - `services/api-gateway/tests/conftest.py`
+   - `services/api-gateway/tests/test_health.py`
+
+3. **依賴更新** (2 個文件)
    - `services/api-gateway/requirements-test.txt`
    - `services/worker-service/requirements-test.txt`
 
-3. **CI/CD 配置** (1 個文件)
+4. **CI/CD 配置** (1 個文件)
    - `.github/workflows/ci.yml`
 
-4. **測試配置** (1 個文件)
+5. **測試配置** (1 個文件)
    - `services/worker-service/pytest.ini`
 
-5. **文檔更新** (2 個文件)
+6. **文檔更新** (2 個文件)
    - `docs/TESTING.md`
    - `README.md`
 
 ### 總計
 
-- **9 個文件修改**
+- **11 個文件修改**
 - **0 個新文件**
 - **0 個文件刪除**
 
@@ -304,6 +358,8 @@ pytest tests/
 
 ## 檢查清單
 
+- [x] 修復 Prometheus metrics 空響應問題
+- [x] 修復 readiness probe 503 測試
 - [x] 修復 rate limiter after_request 註冊問題
 - [x] 修復 redis client 測試屬性缺失
 - [x] 修復 flake8 F824 錯誤
