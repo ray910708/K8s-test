@@ -106,7 +106,7 @@ jobs:
         bandit -r . -f txt --exclude=./tests,./venv || true
 
     - name: Upload Bandit report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: bandit-report-${{ matrix.service }}
@@ -162,7 +162,7 @@ jobs:
         output: 'trivy-report-${{ matrix.service }}.txt'
 
     - name: Upload Trivy report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: trivy-report-${{ matrix.service }}
