@@ -92,10 +92,30 @@ def sample_trace_id():
 def reset_metrics():
     """Reset Prometheus metrics before each test."""
     from prometheus_client import REGISTRY
+    from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily
 
-    # Clear all collectors
-    collectors = list(REGISTRY._collector_to_names.keys())
-    for collector in collectors:
+    # Store references to collectors we want to keep (default collectors)
+    collectors_to_keep = []
+    collectors_to_remove = []
+
+    for collector in list(REGISTRY._collector_to_names.keys()):
+        # Keep default collectors (process, platform, gc)
+        collector_name = collector.__class__.__name__
+        if hasattr(collector, '_name'):
+            # Keep only the default collectors
+            if collector._name in ['process_collector', 'platform_collector', 'gc_collector']:
+                collectors_to_keep.append(collector)
+            else:
+                collectors_to_remove.append(collector)
+        else:
+            # If no _name attribute, check if it's a default type
+            if collector_name in ['ProcessCollector', 'PlatformCollector', 'GCCollector']:
+                collectors_to_keep.append(collector)
+            else:
+                collectors_to_remove.append(collector)
+
+    # Only unregister custom collectors
+    for collector in collectors_to_remove:
         try:
             REGISTRY.unregister(collector)
         except Exception:

@@ -85,21 +85,19 @@ class TestReadinessProbe:
 
     def test_readiness_returns_503_when_redis_disconnected(self, client, mock_redis_client):
         """Test that readiness returns 503 when Redis is disconnected."""
+        import os
+        from unittest.mock import patch
+
         # Mock Redis as disconnected
         mock_redis_client.is_connected.return_value = False
 
-        # Set REDIS_PASSWORD to simulate production environment
-        import os
-        original_password = os.environ.get('REDIS_PASSWORD')
-        os.environ['REDIS_PASSWORD'] = 'test-password'
+        # Patch Config.REDIS_PASSWORD to simulate production environment where password is set
+        with patch('app.Config') as mock_config:
+            mock_config.REDIS_PASSWORD = 'test-password'
+            mock_config.REDIS_HOST = 'localhost'
+            mock_config.REDIS_PORT = 6379
 
-        response = client.get('/health/ready')
-
-        # Restore original environment
-        if original_password:
-            os.environ['REDIS_PASSWORD'] = original_password
-        else:
-            os.environ.pop('REDIS_PASSWORD', None)
+            response = client.get('/health/ready')
 
         assert response.status_code == 503
         data = json.loads(response.data)
