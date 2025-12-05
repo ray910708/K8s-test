@@ -5,7 +5,7 @@ from abuse and ensure fair resource usage.
 """
 import time
 from functools import wraps
-from flask import request, jsonify
+from flask import request, jsonify, make_response
 from typing import Optional, Callable
 from request_context import get_trace_id
 
@@ -141,23 +141,26 @@ def rate_limit(limit: int = 100, window: int = 60, key_func: Optional[Callable] 
             # Check rate limit
             is_allowed, rate_info = rate_limiter.check_rate_limit(key, limit, window)
 
-            # Add rate limit headers to response
-            @current_app.after_request
-            def add_rate_limit_headers(response):
+            if not is_allowed:
+                trace_id = get_trace_id()
+                response = jsonify({
+                    'error': 'Rate Limit Exceeded',
+                    'message': f'Too many requests. Limit: {limit} requests per {window} seconds',
+                    'retry_after': rate_info['reset'] - int(time.time()),
+                    'trace_id': trace_id
+                })
+                response.status_code = 429
                 response.headers['X-RateLimit-Limit'] = str(rate_info['limit'])
                 response.headers['X-RateLimit-Remaining'] = str(rate_info['remaining'])
                 response.headers['X-RateLimit-Reset'] = str(rate_info['reset'])
                 return response
 
-            if not is_allowed:
-                trace_id = get_trace_id()
-                return jsonify({
-                    'error': 'Rate Limit Exceeded',
-                    'message': f'Too many requests. Limit: {limit} requests per {window} seconds',
-                    'retry_after': rate_info['reset'] - int(time.time()),
-                    'trace_id': trace_id
-                }), 429
-
-            return func(*args, **kwargs)
+            # Execute the wrapped function and add rate limit headers
+            result = func(*args, **kwargs)
+            response = make_response(result)
+            response.headers['X-RateLimit-Limit'] = str(rate_info['limit'])
+            response.headers['X-RateLimit-Remaining'] = str(rate_info['remaining'])
+            response.headers['X-RateLimit-Reset'] = str(rate_info['reset'])
+            return response
         return wrapper
     return decorator

@@ -93,6 +93,8 @@ class TestRedisClientErrorHandling:
         client._client = Mock()
         client._client.get.side_effect = ConnectionError("Connection lost")
         client._is_connected = False
+        client._last_health_check = 0
+        client._health_check_interval = 30
 
         result = client.get('test_key', default='default_value')
         assert result == 'default_value'
@@ -105,6 +107,8 @@ class TestRedisClientErrorHandling:
         client._client = Mock()
         client._client.set.side_effect = ConnectionError("Connection lost")
         client._is_connected = False
+        client._last_health_check = 0
+        client._health_check_interval = 30
 
         result = client.set('test_key', 'test_value')
         assert result is False
