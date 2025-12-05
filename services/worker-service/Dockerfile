@@ -24,7 +24,7 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
-COPY worker.py ./
+COPY *.py ./
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \

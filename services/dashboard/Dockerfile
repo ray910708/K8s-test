@@ -24,7 +24,7 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
-COPY dashboard.py ./
+COPY *.py ./
 COPY templates/ ./templates/
 COPY static/ ./static/
 
