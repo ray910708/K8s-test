@@ -186,31 +186,44 @@ flake8>=6.1.0  # ✅ 新增
 
 ---
 
-### 5. actions/upload-artifact 版本棄用
+### 5. GitHub Actions 版本棄用
 
 **問題**:
 ```
+# upload-artifact 棄用
 Error: This request has been automatically failed because it uses a deprecated version of `actions/upload-artifact: v3`
+
+# CodeQL Action 棄用
+Error: CodeQL Action major versions v1 and v2 have been deprecated.
 ```
 
-**原因**: 
-GitHub Actions 在 2024-04-16 宣布棄用 v3 版本的 artifact actions。
+**原因**:
+- GitHub Actions 在 2024-04-16 宣布棄用 v3 版本的 artifact actions
+- GitHub 在 2025-01-10 宣布棄用 CodeQL Action v1 和 v2
 
-**修復**: 
-升級 `actions/upload-artifact` 從 v3 到 v4：
+**修復**:
 
+1. **upload-artifact 升級** - 從 v3 升級到 v4：
 ```yaml
 # 修復前
-- name: Upload Bandit report
-  uses: actions/upload-artifact@v3  # ❌ 已棄用
+uses: actions/upload-artifact@v3  # ❌ 已棄用
 
 # 修復後
-- name: Upload Bandit report
-  uses: actions/upload-artifact@v4  # ✅ 最新版本
+uses: actions/upload-artifact@v4  # ✅ 最新版本
 ```
 
-**文件**: 
+2. **CodeQL Action 升級** - 從 v2 升級到 v3：
+```yaml
+# 修復前
+uses: github/codeql-action/upload-sarif@v2  # ❌ 已棄用
+
+# 修復後
+uses: github/codeql-action/upload-sarif@v3  # ✅ 最新版本
+```
+
+**文件**:
 - [.github/workflows/ci.yml:109](.github/workflows/ci.yml#L109) - Bandit 報告上傳
+- [.github/workflows/ci.yml:152](.github/workflows/ci.yml#L152) - Trivy SARIF 上傳
 - [.github/workflows/ci.yml:165](.github/workflows/ci.yml#L165) - Trivy 報告上傳
 
 ---
@@ -372,11 +385,13 @@ pytest tests/
 
 - [x] 修復 Prometheus metrics 空響應問題
 - [x] 修復 readiness probe 503 測試
+- [x] 修復 metrics 測試斷言
 - [x] 修復 rate limiter after_request 註冊問題
 - [x] 修復 redis client 測試屬性缺失
 - [x] 修復 flake8 F824 錯誤
 - [x] 添加 flake8 到測試依賴
 - [x] 升級 upload-artifact 到 v4
+- [x] 升級 CodeQL Action 到 v3
 - [x] 調整 Worker Service 覆蓋率目標
 - [x] 更新測試文檔
 - [x] 更新 README
