@@ -8,7 +8,70 @@
 
 ## 問題與修復
 
-### 1. Flake8 F824 錯誤 - Worker Service
+### 1. Rate Limiter after_request 註冊問題 - API Gateway
+
+**問題**:
+```
+AssertionError: The setup method 'after_request' can no longer be called on the application.
+It has already handled its first request, any changes will not be applied consistently.
+```
+
+**原因**:
+Rate limiter 裝飾器在請求處理函數內部使用 `@current_app.after_request` 動態註冊響應處理器。Flask 不允許在應用已經開始處理請求後註冊新的 after_request 處理器，因為這會導致行為不一致。
+
+**修復**:
+1. 移除 [services/api-gateway/rate_limiter.py:145-150](services/api-gateway/rate_limiter.py#L145-L150) 中的動態 after_request 註冊
+2. 改用 `make_response()` 直接修改響應對象並添加 headers
+3. 在速率限制拒絕（429）和允許的情況下都添加 rate limit headers
+
+```python
+# 修復前
+@current_app.after_request  # ❌ 動態註冊在請求處理期間不允許
+def add_rate_limit_headers(response):
+    response.headers['X-RateLimit-Limit'] = str(rate_info['limit'])
+    response.headers['X-RateLimit-Remaining'] = str(rate_info['remaining'])
+    response.headers['X-RateLimit-Reset'] = str(rate_info['reset'])
+    return response
+
+if not is_allowed:
+    return jsonify({...}), 429
+
+return func(*args, **kwargs)
+
+# 修復後
+if not is_allowed:
+    response = jsonify({...})
+    response.status_code = 429
+    response.headers['X-RateLimit-Limit'] = str(rate_info['limit'])
+    response.headers['X-RateLimit-Remaining'] = str(rate_info['remaining'])
+    response.headers['X-RateLimit-Reset'] = str(rate_info['reset'])
+    return response
+
+# Execute the wrapped function and add rate limit headers
+result = func(*args, **kwargs)
+response = make_response(result)  # ✅ 直接修改響應對象
+response.headers['X-RateLimit-Limit'] = str(rate_info['limit'])
+response.headers['X-RateLimit-Remaining'] = str(rate_info['remaining'])
+response.headers['X-RateLimit-Reset'] = str(rate_info['reset'])
+return response
+```
+
+**額外修復**:
+同時修復測試中缺少的屬性初始化。當 mock_redis_client fixture 跳過 `__init__` 時，某些測試手動創建 RedisClient 實例但沒有設置所有必需的屬性。
+
+```python
+# 在 test_redis_client.py 中添加
+client._last_health_check = 0
+client._health_check_interval = 30
+```
+
+**文件**:
+- [services/api-gateway/rate_limiter.py](services/api-gateway/rate_limiter.py)
+- [services/api-gateway/tests/test_redis_client.py](services/api-gateway/tests/test_redis_client.py)
+
+---
+
+### 2. Flake8 F824 錯誤 - Worker Service
 
 **問題**: 
 ```
@@ -37,7 +100,7 @@ def run_scheduler():
 
 ---
 
-### 2. Flake8 命令未找到
+### 3. Flake8 命令未找到
 
 **問題**:
 ```
@@ -62,7 +125,7 @@ flake8>=6.1.0  # ✅ 新增
 
 ---
 
-### 3. actions/upload-artifact 版本棄用
+### 4. actions/upload-artifact 版本棄用
 
 **問題**:
 ```
@@ -91,7 +154,7 @@ GitHub Actions 在 2024-04-16 宣布棄用 v3 版本的 artifact actions。
 
 ---
 
-### 4. Worker Service 測試覆蓋率不足
+### 5. Worker Service 測試覆蓋率不足
 
 **問題**:
 ```
@@ -212,8 +275,10 @@ pytest tests/
 
 ### 修改的文件
 
-1. **代碼修復** (1 個文件)
+1. **代碼修復** (3 個文件)
    - `services/worker-service/worker.py`
+   - `services/api-gateway/rate_limiter.py`
+   - `services/api-gateway/tests/test_redis_client.py`
 
 2. **依賴更新** (2 個文件)
    - `services/api-gateway/requirements-test.txt`
@@ -231,7 +296,7 @@ pytest tests/
 
 ### 總計
 
-- **7 個文件修改**
+- **9 個文件修改**
 - **0 個新文件**
 - **0 個文件刪除**
 
@@ -239,6 +304,8 @@ pytest tests/
 
 ## 檢查清單
 
+- [x] 修復 rate limiter after_request 註冊問題
+- [x] 修復 redis client 測試屬性缺失
 - [x] 修復 flake8 F824 錯誤
 - [x] 添加 flake8 到測試依賴
 - [x] 升級 upload-artifact 到 v4
