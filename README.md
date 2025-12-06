@@ -1,7 +1,7 @@
 # Microservices Health Monitor
 
-[![CI Pipeline](https://github.com/OWNER/K8s-test/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/K8s-test/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/OWNER/K8s-test/branch/main/graph/badge.svg)](https://codecov.io/gh/OWNER/K8s-test)
+[![CI Pipeline](https://github.com/ray910708/K8s-test/actions/workflows/ci.yml/badge.svg)](https://github.com/ray910708/K8s-test/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/ray910708/K8s-test/branch/main/graph/badge.svg)](https://codecov.io/gh/ray910708/K8s-test)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 一個生產級的 Kubernetes 微服務專案，展示完整的 DevOps/SRE 最佳實踐，包括安全性、可觀測性、測試和 CI/CD。
